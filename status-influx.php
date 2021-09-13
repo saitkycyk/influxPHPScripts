@@ -15,7 +15,7 @@ $start_time = microtime(true);
 $client = new InfluxDB\Client(env("host"), env("port"), env("username"), env("password"));
 
 $measurement = 'modems_status';
-$writeZip = true;
+$writeZip = env("status_writeToZip");
 $dbname = env("status_database");
 
 $database = $client->selectDB($dbname);
