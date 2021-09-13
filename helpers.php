@@ -1,14 +1,14 @@
 <?php
 
-function env($string, $default = null)
+function env($string, $default = "notSet")
 {
+	$exampleArray = include(".env.example");
+
 	if(file_exists(".env")) {
-		$array = include_once(".env");
-	} else {
-		$array = include_once(".env.example");
+		$array = include(".env");
 	}
 
-	return $array[$string] ?? $default;
+	return $array[$string] ?? (isset($exampleArray[$string]) ? $exampleArray[$string] : ($default === "notSet" ? null : $default));
 }
 
 function data_get($target, $key, $default = null)
