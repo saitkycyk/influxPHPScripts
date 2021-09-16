@@ -28,6 +28,7 @@ foreach($onlineCmtses as $onlineCmts)
 {
 	if($onlineCmts == ".json") continue;
 	$cmtsOnModems = json_decode(file_get_contents("/home/albismart/cmtsOnline/$onlineCmts"));
+	if($cmtsOnModems == null) continue;
 	foreach ($cmtsOnModems as $onlineModem) {
 		$onlineCmmac = strtoupper($onlineModem->cmmac);
 		array_push($onlineCmmacs, $onlineCmmac);
@@ -39,6 +40,7 @@ foreach($offlineCmtses as $offlineCmts)
 {
 	if($offlineCmts == ".json") continue;
 	$cmtsOffModems = json_decode(file_get_contents("/home/albismart/cmtsOffline/$offlineCmts"));
+	if($cmtsOffModems == null) continue;
 	foreach ($cmtsOffModems as $offlineModem) {
 		$offlineCmmac = strtoupper($offlineModem->cmmac);
 		array_push($offlineCmmacs, $offlineCmmac);
