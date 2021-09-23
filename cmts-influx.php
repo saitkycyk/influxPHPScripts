@@ -5,6 +5,7 @@ use InfluxDB\Driver\Guzzle;
 require __DIR__ . '/vendor/autoload.php';
 
 include(__DIR__.'/vendor/influxdb/influxdb-php/src/InfluxDB/Client.php');
+include(__DIR__.'/vendor/guzzlehttp/guzzle/src/Client.php');
 include('helpers.php');
 
 // @ini_set( 'upload_max_size' , '999M' );
@@ -14,14 +15,14 @@ include('helpers.php');
 date_default_timezone_set("Europe/Belgrade");
 $start_time = microtime(true);
 
-$client = new InfluxDB\Client(env("host"), env("port"), env("username"), env("password"));
+// $client = new InfluxDB\Client(env("host"), env("port"), env("username"), env("password"));
 
 $dbname = env("cmts_database");
 $community = env("cmts_community");
 // // set the UDP driver in the client
 // $client->setDriver(new \InfluxDB\Driver\UDP($client->getHost(), 8089));
 
-$database = $client->selectDB($dbname);
+// $database = $client->selectDB($dbname);
 
 $cmtses = scanDirectory('/home/albismart/cmtsOnline');
 
@@ -40,7 +41,7 @@ foreach($cmtses as $cmts)
     $points = array_merge($points, $preparedData);
 
     if(count($points) >= 10000) {
-        $database->writePoints($points, InfluxDB\Database::PRECISION_SECONDS);
+        // $database->writePoints($points, InfluxDB\Database::PRECISION_SECONDS);
         $pointsTotal += count($points);
         $total += $i;
         echo ("Wrote $total modems into influx!\n");
@@ -53,9 +54,9 @@ foreach($cmtses as $cmts)
 
 function seperateFields($cmts, $community)
 {
-    $cmtsMainPoints = prepareMainData($ctms, "cmts_main", $community);
+    $cmtsMainPoints = prepareMainData($cmts, "cmts_traffic", $community);
 
-    $cmtsUsPoints = prepareCmtsUsData($ctms, "cmts_us", $community);
+    $cmtsUsPoints = prepareCmtsUsData($cmts, "cmts_us", $community);
 
     $mergedPoints = array_merge($cmtsMainPoints, $cmtsUsPoints);
 
@@ -64,20 +65,65 @@ function seperateFields($cmts, $community)
 
 function prepareMainData($cmts, $measurement, $community)
 {
-    $client = new InfluxDB\Driver\Guzzle(new \GuzzleHttp\Client());
+    $client = new GuzzleHttp\Client();
 
+    try {
     $response = $client->get("127.0.0.1:9000/?cmtsip=$cmts&community=$community");
+    } catch (\Throwable $e) {return [];}
+
     if($response->getStatusCode() != 200) return [];
 
     $data = json_decode((string)$response->getBody(), true);
 
     $preparedData = [];
-    foreach($data as $single)
-    {
-        $tags = ['cmmac' => $cmmac, 'id' => (string)$single['index']];
+    foreach ($data as $cmtsIp => $dataContent) {
+        unset($dataContent["timestamp"],$dataContent["FNs"],$dataContent["sysDescr"],$dataContent["sysName"]);
 
-        $content = array_map('doubleval', $single);
-        $content['index'] = (string)$single['index'];
+        foreach($dataContent as $key => $single)
+        {
+            $id = (string)$key;
+            $tags = ['cmts' => $cmts, 'id' => $id];
+
+            $content['ifHCInOctets'] = (int)$single['ifHCInOctets'];
+            $content['ifHCOutOctets'] = (int)$single['ifHCOutOctets'];
+            $content['index'] = $id;
+
+            $point = prepareSeperatedPoint($measurement, $tags, $content);
+
+            $preparedData[] = $point;
+        }
+    }
+
+    return $preparedData;
+}
+
+function prepareCmtsUsData($cmts, $measurement, $community)
+{
+    $client = new GuzzleHttp\Client();
+
+    try {
+    $response = $client->get("127.0.0.1:9000/cmts_us?cmtsip=$cmts&community=$community");
+    } catch (\Throwable $e) {return [];}
+    if($response->getStatusCode() != 200) return [];
+
+    $data = json_decode((string)$response->getBody(), true);
+
+    unset($data["timestamp"]);
+
+    $preparedData = [];
+    foreach($data as $key => $single)
+    {
+        $id = (string)$key;
+        $tags = ['cmts' => $cmts, 'id' => $id];
+
+        $content['index'] = $id;
+        $content["docsIfSigQUnerroreds"] = (int)$single["docsIfSigQUnerroreds"];
+        $content["docsIfSigQCorrecteds"] = (int)$single["docsIfSigQCorrecteds"];
+        $content["docsIfSigQUncorrectables"] = (int)$single["docsIfSigQUncorrectables"];
+        $content["docsIfSigQSignalNoise"] = (int)$single["docsIfSigQSignalNoise"];
+        $content["docsIfUpChannelWidth"] = (int)$single["docsIfUpChannelWidth"];
+        $content["docsIfUpChannelModulationProfile"] = (int)$single["docsIfUpChannelModulationProfile"];
+        $content["docsIfUpChannelFrequency"] = (int)$single["docsIfUpChannelFrequency"];
 
         $point = prepareSeperatedPoint($measurement, $tags, $content);
 
@@ -87,6 +133,16 @@ function prepareMainData($cmts, $measurement, $community)
     return $preparedData;
 }
 
+function prepareSeperatedPoint($measurement, $tags, $fields)
+{
+    $point = new InfluxDB\Point(
+        $measurement, // name of the measurement
+        null, // the measurement value
+        $tags, // optional tags
+        $fields, // optional additional fields
+        time());
+    return $point;
+}
 
 
 $total += $i;
@@ -96,6 +152,6 @@ $end_time = microtime(true);
 $execution_time = ($end_time - $start_time);
 echo " It takes ". $execution_time." seconds to prepare the payload for writing!\n";
 
-$database->writePoints($points, InfluxDB\Database::PRECISION_SECONDS);
+// $database->writePoints($points, InfluxDB\Database::PRECISION_SECONDS);
 
 echo "Number of modems that had not .json file: ".count($ignored)."\n";
