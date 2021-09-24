@@ -15,14 +15,14 @@ include('helpers.php');
 date_default_timezone_set("Europe/Belgrade");
 $start_time = microtime(true);
 
-// $client = new InfluxDB\Client(env("host"), env("port"), env("username"), env("password"));
+$client = new InfluxDB\Client(env("host"), env("port"), env("username"), env("password"));
 
 $dbname = env("cmts_database");
 $community = env("cmts_community");
 // // set the UDP driver in the client
 // $client->setDriver(new \InfluxDB\Driver\UDP($client->getHost(), 8089));
 
-// $database = $client->selectDB($dbname);
+$database = $client->selectDB($dbname);
 
 $cmtses = scanDirectory('/home/albismart/cmtsOnline');
 
@@ -41,7 +41,7 @@ foreach($cmtses as $cmts)
     $points = array_merge($points, $preparedData);
 
     if(count($points) >= 10000) {
-        // $database->writePoints($points, InfluxDB\Database::PRECISION_SECONDS);
+        $database->writePoints($points, InfluxDB\Database::PRECISION_SECONDS);
         $pointsTotal += count($points);
         $total += $i;
         echo ("Wrote $total modems into influx!\n");
@@ -54,7 +54,7 @@ foreach($cmtses as $cmts)
 
 function seperateFields($cmts, $community)
 {
-    $cmtsMainPoints = prepareMainData($cmts, "cmts_traffic", $community);
+    $cmtsMainPoints = prepareTrafficData($cmts, "cmts_traffic", $community);
 
     $cmtsUsPoints = prepareCmtsUsData($cmts, "cmts_us", $community);
 
@@ -63,12 +63,12 @@ function seperateFields($cmts, $community)
     return $mergedPoints;
 }
 
-function prepareMainData($cmts, $measurement, $community)
+function prepareTrafficData($cmts, $measurement, $community)
 {
     $client = new GuzzleHttp\Client();
 
     try {
-    $response = $client->get("127.0.0.1:9000/?cmtsip=$cmts&community=$community");
+        $response = $client->get("127.0.0.1:9000/traffic?cmtsip=$cmts&community=$community");
     } catch (\Throwable $e) {return [];}
 
     if($response->getStatusCode() != 200) return [];
@@ -84,8 +84,8 @@ function prepareMainData($cmts, $measurement, $community)
             $id = (string)$key;
             $tags = ['cmts' => $cmts, 'id' => $id];
 
-            $content['ifHCInOctets'] = (int)$single['ifHCInOctets'];
-            $content['ifHCOutOctets'] = (int)$single['ifHCOutOctets'];
+            $content['ifHCInOctets'] = isset($single['ifHCInOctets']) ? ((int)$single['ifHCInOctets']) : 0;
+            $content['ifHCOutOctets'] = isset($single['ifHCOutOctets']) ? ((int)$single['ifHCOutOctets']) : 0;
             $content['index'] = $id;
 
             $point = prepareSeperatedPoint($measurement, $tags, $content);
@@ -102,32 +102,34 @@ function prepareCmtsUsData($cmts, $measurement, $community)
     $client = new GuzzleHttp\Client();
 
     try {
-    $response = $client->get("127.0.0.1:9000/cmts_us?cmtsip=$cmts&community=$community");
+        $response = $client->get("127.0.0.1:9000/cmts_us?cmtsip=$cmts&community=$community");
     } catch (\Throwable $e) {return [];}
     if($response->getStatusCode() != 200) return [];
 
     $data = json_decode((string)$response->getBody(), true);
 
-    unset($data["timestamp"]);
-
     $preparedData = [];
-    foreach($data as $key => $single)
-    {
-        $id = (string)$key;
-        $tags = ['cmts' => $cmts, 'id' => $id];
+    foreach ($data as $cmtsIp => $dataContent) {
+        unset($dataContent["timestamp"]);
 
-        $content['index'] = $id;
-        $content["docsIfSigQUnerroreds"] = (int)$single["docsIfSigQUnerroreds"];
-        $content["docsIfSigQCorrecteds"] = (int)$single["docsIfSigQCorrecteds"];
-        $content["docsIfSigQUncorrectables"] = (int)$single["docsIfSigQUncorrectables"];
-        $content["docsIfSigQSignalNoise"] = (int)$single["docsIfSigQSignalNoise"];
-        $content["docsIfUpChannelWidth"] = (int)$single["docsIfUpChannelWidth"];
-        $content["docsIfUpChannelModulationProfile"] = (int)$single["docsIfUpChannelModulationProfile"];
-        $content["docsIfUpChannelFrequency"] = (int)$single["docsIfUpChannelFrequency"];
+        foreach($dataContent as $key => $single)
+        {
+            $id = (string)$key;
+            $tags = ['cmts' => $cmts, 'id' => $id];
 
-        $point = prepareSeperatedPoint($measurement, $tags, $content);
+            $content['index'] = $id;
+            $content["docsIfSigQUnerroreds"] = (int)$single["docsIfSigQUnerroreds"];
+            $content["docsIfSigQCorrecteds"] = (int)$single["docsIfSigQCorrecteds"];
+            $content["docsIfSigQUncorrectables"] = (int)$single["docsIfSigQUncorrectables"];
+            $content["docsIfSigQSignalNoise"] = (int)$single["docsIfSigQSignalNoise"];
+            $content["docsIfUpChannelWidth"] = (int)$single["docsIfUpChannelWidth"];
+            $content["docsIfUpChannelModulationProfile"] = (int)$single["docsIfUpChannelModulationProfile"];
+            $content["docsIfUpChannelFrequency"] = (int)$single["docsIfUpChannelFrequency"];
 
-        array_push($preparedData, $point);
+            $point = prepareSeperatedPoint($measurement, $tags, $content);
+
+            array_push($preparedData, $point);
+        }
     }
 
     return $preparedData;
