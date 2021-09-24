@@ -48,17 +48,18 @@ foreach($cmtses as $cmts)
         echo ("Wrote $pointsTotal points into influx!\n\n");
         $points = [];
         $i = 1;
+    } else {
+        $i += count($preparedData);
     }
-    $i++;
 }
 
 function seperateFields($cmts, $community)
 {
-    $cmtsMainPoints = prepareTrafficData($cmts, "cmts_traffic", $community);
+    $cmtsTrafficPoints = prepareTrafficData($cmts, "cmts_traffic", $community);
 
     $cmtsUsPoints = prepareCmtsUsData($cmts, "cmts_us", $community);
 
-    $mergedPoints = array_merge($cmtsMainPoints, $cmtsUsPoints);
+    $mergedPoints = array_merge($cmtsTrafficPoints, $cmtsUsPoints);
 
     return $mergedPoints;
 }
@@ -154,6 +155,6 @@ $end_time = microtime(true);
 $execution_time = ($end_time - $start_time);
 echo " It takes ". $execution_time." seconds to prepare the payload for writing!\n";
 
-// $database->writePoints($points, InfluxDB\Database::PRECISION_SECONDS);
+$database->writePoints($points, InfluxDB\Database::PRECISION_SECONDS);
 
 echo "Number of modems that had not .json file: ".count($ignored)."\n";
