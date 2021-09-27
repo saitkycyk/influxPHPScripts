@@ -2,10 +2,11 @@
 
 function env($string, $default = "notSet")
 {
-	$exampleArray = include(".env.example");
+	$path = dirname(__FILE__);
+	$exampleArray = include("$path/.env.example");
 
-	if(file_exists(".env")) {
-		$array = include(".env");
+	if(file_exists("$path/.env")) {
+		$array = include("$path/.env");
 	}
 
 	return $array[$string] ?? (isset($exampleArray[$string]) ? $exampleArray[$string] : ($default === "notSet" ? null : $default));
